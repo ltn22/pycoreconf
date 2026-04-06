@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""
+pccconvert - Convert between JSON and CBOR using a CORECONF SID file.
+
+Usage:
+    pccconvert <sid_file> <data_file>
+
+If <data_file> ends with .json  → converts to CBOR (output: <basename>.cbor)
+Otherwise                       → converts to JSON (output: <basename>.json)
+"""
+
+import sys
+import os
+import json
+import pprint
+
+# Add project root to path so pycoreconf can be found without installation
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
+import cbor2
+import pycoreconf
+
+
+class CBORTagEncoder(json.JSONEncoder):
+    """JSON encoder that resolves cbor2.CBORTag(45, sid) to YANG identity names."""
+    def __init__(self, *args, sid_ids=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._sid_ids = sid_ids or {}
+
+    def default(self, obj):
+        if isinstance(obj, cbor2.CBORTag):
+            if obj.tag == 45:  # RFC 9254 SID reference
+                return self._sid_ids.get(obj.value, f"sid:{obj.value}")
+            return {"cbor_tag": obj.tag, "value": obj.value}
+        if isinstance(obj, bytes):
+            return obj.hex()
+        return super().default(obj)
+
+
+def main():
+    if len(sys.argv) != 3:
+        print(f"Usage: {os.path.basename(sys.argv[0])} <sid_file> <data_file>")
+        sys.exit(1)
+
+    sid_file = sys.argv[1]
+    data_file = sys.argv[2]
+
+    if not os.path.isfile(sid_file):
+        print(f"Error: SID file not found: {sid_file}")
+        sys.exit(1)
+
+    if not os.path.isfile(data_file):
+        print(f"Error: data file not found: {data_file}")
+        sys.exit(1)
+
+    try:
+        ccm = pycoreconf.CORECONFModel(sid_file)
+    except Exception as e:
+        print(f"Error loading SID file: {e}")
+        sys.exit(1)
+
+    base, ext = os.path.splitext(data_file)
+
+    if ext.lower() == ".json":
+        # JSON → CBOR
+        output_file = base + ".cbor"
+        try:
+            cbor_data = ccm.toCORECONF(data_file)
+        except Exception as e:
+            print(f"Error converting to CBOR: {e}")
+            sys.exit(1)
+        with open(output_file, "wb") as f:
+            f.write(cbor_data)
+        print(f"JSON → CBOR: {output_file} ({len(cbor_data)} bytes)")
+
+    else:
+        # CBOR → JSON
+        output_file = base + ".json"
+        try:
+            with open(data_file, "rb") as f:
+                cbor_data = f.read()
+            result = ccm.toJSON(cbor_data, return_pydict=True)
+        except Exception as e:
+            import traceback
+            print(f"Error converting to JSON: {e}")
+            traceback.print_exc()
+            sys.exit(1)
+        pprint.pprint (result)
+        enc_kwargs = {"cls": CBORTagEncoder, "sid_ids": ccm.ids}
+        with open(output_file, "w") as f:
+            json.dump(result, f, indent=2, **enc_kwargs)
+        print(f"CBOR → JSON: {output_file} ({len(json.dumps(result, **enc_kwargs))} characters)")
+
+
+if __name__ == "__main__":
+    main()

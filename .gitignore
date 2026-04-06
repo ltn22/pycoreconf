@@ -82,3 +82,8 @@ uv.lock
 
 # Sample outputs
 samples/**/generated_*
+
+# Local/converted SID files and test data not for VCS
+samples/datastore/*.sor
+samples/datastore/*-conv.sid
+samples/datastore/ietf-schc@2026-01-12-converted.sid

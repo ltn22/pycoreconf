@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""
+sid_convert - Convert a legacy SID file to RFC-9595 format.
+
+Usage:
+    sid_convert <old.sid> [<output.sid>]
+
+Wraps a legacy SID file (flat structure) into the standard
+ietf-sid-file:sid-file container format expected by pycoreconf.
+If no output path is given, prints to stdout.
+"""
+
+import sys
+import os
+import json
+
+
+def convert(path_in):
+    with open(path_in) as f:
+        obj = json.load(f)
+
+    # Already in new format?
+    if len(obj) == 1 and list(obj.keys())[0].endswith("sid-file"):
+        print(f"File is already in RFC-9595 format.", file=sys.stderr)
+        return obj
+
+    new = {
+        "ietf-sid-file:sid-file": {
+            "module-name":      obj.get("module-name", "unknown"),
+            "module-revision":  obj.get("module-revision", "unknown"),
+            "sid-file-status":  "unstable",
+            "assignment-range": obj.get("assignment-range", []),
+            "item":             obj.get("item", []),
+        }
+    }
+
+    if "key-mapping" in obj:
+        new["ietf-sid-file:sid-file"]["key-mapping"] = obj["key-mapping"]
+
+    return new
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(f"Usage: {os.path.basename(sys.argv[0])} <old.sid> [<output.sid>]")
+        sys.exit(1)
+
+    path_in = sys.argv[1]
+    path_out = sys.argv[2] if len(sys.argv) >= 3 else None
+
+    if not os.path.isfile(path_in):
+        print(f"Error: file not found: {path_in}")
+        sys.exit(1)
+
+    result = convert(path_in)
+    output = json.dumps(result, indent=2)
+
+    if path_out:
+        with open(path_out, "w") as f:
+            f.write(output)
+        print(f"Converted: {path_in} -> {path_out}")
+    else:
+        print(output)
+
+
+if __name__ == "__main__":
+    main()
