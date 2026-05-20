@@ -832,3 +832,34 @@ class CORECONFModel(ModelSID):
         )
         data = dm.from_raw(config)
         data.validate()
+
+    def _change_identityref (self, value, offset, delta):
+        """
+        Example of a custom SID translation function for identityref types.
+        This is just a placeholder to show how one might implement custom logic
+        for translating between CBOR and model representations for specific SIDs.
+        """
+        if type(value) is list:
+            return [self._change_identityref(v, offset, delta) for v in value]
+        if type(value) is dict:
+            return {k: self._change_identityref(v, offset, delta+k) for k, v in value.items()}
+        else:
+            if self.types[self.ids[delta]] == "identityref":
+                # Example transformation: add offset to the SID value
+                return  offset - value
+            return value
+            
+
+    def translate_sid(self, data: bytes, offset: int=0) -> bytes:
+        if type(data) is bytes:
+            data = cbor.loads(data)
+
+        first_sid = int(self.sid_ranges[0].get("entry-point"))  # example SID for identityref type
+        if type(data) is dict and len(data) ==1:
+            key, value = next(iter(data.items()))  
+            new_cbor = {first_sid-key-offset: self._change_identityref(value, first_sid+offset, key)}
+            
+            return cbor.dumps(new_cbor)
+
+        
+ 
