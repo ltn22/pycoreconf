@@ -841,12 +841,17 @@ class CORECONFModel(ModelSID):
         """
         if type(value) is list:
             return [self._change_identityref(v, offset, delta) for v in value]
-        if type(value) is dict:
-            return {k: self._change_identityref(v, offset, delta+k) for k, v in value.items()}
+        elif type(value) is dict:
+            return {-k: self._change_identityref(v, offset, delta+k) for k, v in value.items()}
+        elif type(value) is cbor.CBORTag:
+            if value.tag == 45: # identityref tag
+                return cbor.CBORTag(45, offset - value.value -1)
+            else:
+                return value
         else:
             if self.types[self.ids[delta]] == "identityref":
                 # Example transformation: add offset to the SID value
-                return  offset - value
+                return  offset - value -1
             return value
             
 
@@ -857,7 +862,7 @@ class CORECONFModel(ModelSID):
         first_sid = int(self.sid_ranges[0].get("entry-point"))  # example SID for identityref type
         if type(data) is dict and len(data) ==1:
             key, value = next(iter(data.items()))  
-            new_cbor = {first_sid-key-offset: self._change_identityref(value, first_sid+offset, key)}
+            new_cbor = {first_sid-key-offset-1: self._change_identityref(value, first_sid+offset, key)}
             
             return cbor.dumps(new_cbor)
 

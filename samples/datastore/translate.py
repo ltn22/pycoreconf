@@ -9,6 +9,7 @@ import os
 import json
 import random
 import pprint
+import cbor2 as cbor
 
 
 import pycoreconf
@@ -57,7 +58,11 @@ def main():
 
 
     new_cbor_data = ccm.translate_sid(cbor_data)
+
+    pprint.pprint(cbor.loads(cbor_data), sort_dicts=False)
+    input("\nPress Enter to continue with translation...")
     print (f"len(new_cbor_data)={len(new_cbor_data)}, old_size={old_size}")
+    pprint.pprint(cbor.loads(new_cbor_data), sort_dicts=False)
 
 
 if __name__ == "__main__":

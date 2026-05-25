@@ -26,6 +26,7 @@ def main():
     print(ds.to_cbor().hex())
 
     ds["/schc/rule[rule-id-value='11'][rule-id-length='3']/entry[entry-index='1']/field-id"] = "ietf-schc:fid-ipv6-version"
+    ds["/schc/rule[rule-id-value='11'][rule-id-length='3']/entry[entry-index='1']/field-length"] = "ietf-schc:fl-variable"
 
     print(ds)
     print(ds.to_cbor().hex())
@@ -64,6 +65,9 @@ def main():
         print(f"[{status}] {xpath_in}")
         if status == "DIFFER":
             print(f"       got: {xpath_out}")
+
+    print(ds.to_json())
+    print(ds.to_cbor().hex())
 
 
 if __name__ == "__main__":

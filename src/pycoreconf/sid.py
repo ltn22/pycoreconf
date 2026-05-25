@@ -23,7 +23,7 @@ class ModelSID:
 
     def __init__(self, sid_files: list[str]):
         self.sid_files = sid_files # .sid file paths
-        self.sids, self.types, self.key_mapping = self._collect_sid_data() #req. ltn22/pyang
+        self.sids, self.types, self.key_mapping, self.sid_ranges = self._collect_sid_data() #req. ltn22/pyang
         self.ids = {v: k for k, v in self.sids.items()} # {sid:id}
 
     def _parse_sid_file(self, sid_filename: str) -> tuple:
@@ -57,6 +57,7 @@ class ModelSID:
         items = sid_data.get("item") or sid_data.get("items", [])
         module_name = sid_data.get("module-name", "unknown")
         key_mapping = sid_data.get("key-mapping", None)
+        sid_ranges = sid_data.get("assignment-range", None)
 
         if key_mapping is None:
             key_mapping = {}
@@ -66,7 +67,7 @@ class ModelSID:
                 stacklevel=2
             )
 
-        return module_name, items, key_mapping
+        return module_name, items, key_mapping, sid_ranges
 
     def _collect_sid_data(self) -> tuple:
         """
@@ -85,12 +86,13 @@ class ModelSID:
         sids = {}
         types = {}
         key_mapping = {}
+        sid_ranges = {} # this is just a test, with one SID file.
 
         for sid_filename in self.sid_files:
             
             # Read the contents of the sid files
             _logger.debug("Loading SID file: %s", sid_filename)
-            module_name, items, km = self._parse_sid_file(sid_filename)
+            module_name, items, km, sid_ranges = self._parse_sid_file(sid_filename)
 
             for item in items:
 
@@ -118,4 +120,4 @@ class ModelSID:
             len(self.sid_files), len(sids), len(types), len(key_mapping)
         )
             
-        return sids, types, key_mapping
+        return sids, types, key_mapping, sid_ranges
