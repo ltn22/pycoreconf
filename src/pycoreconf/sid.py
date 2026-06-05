@@ -86,36 +86,79 @@ class ModelSID:
         types = {}
         key_mapping = {}
 
-        for sid_filename in self.sid_files:
-            
-            # Read the contents of the sid files
-            _logger.debug("Loading SID file: %s", sid_filename)
-            module_name, items, km = self._parse_sid_file(sid_filename)
+        if self.sid_files is not None :
+            for sid_filename in self.sid_files:
+                
+                # Read the contents of the sid files
+                _logger.debug("Loading SID file: %s", sid_filename)
+                module_name, items, km = self._parse_sid_file(sid_filename)
 
-            for item in items:
+                for item in items:
 
-                if item["namespace"] == "identity": # save as module-name:identity
-                    sids[f'{module_name}:{item["identifier"]}'] = int(item["sid"])
+                    if item["namespace"] == "identity": # save as module-name:identity
+                        sids[f'{module_name}:{item["identifier"]}'] = int(item["sid"])
 
-                else:
-                    sids[item["identifier"]] = int(item["sid"])
+                    else:
+                        sids[item["identifier"]] = int(item["sid"])
 
-                if "type" in item.keys():
-                    types[item["identifier"]] = item["type"]
+                    if "type" in item.keys():
+                        types[item["identifier"]] = item["type"]
 
-                key_mapping.update(km)
+                    key_mapping.update(km)
 
-            # Save module name & ranges = {'module-name': [(start, end)], ...} ?
-            # ranges[obj["module-name"]] = _parse_assignment_ranges(obj)
+                # Save module name & ranges = {'module-name': [(start, end)], ...} ?
+                # ranges[obj["module-name"]] = _parse_assignment_ranges(obj)
 
-            _logger.debug(
-                "Parsed SID module '%s': items=%d, typed-leaves=%d, key-mappings=%d",
-                module_name, len(items), len(types), len(km)
+                _logger.debug(
+                    "Parsed SID module '%s': items=%d, typed-leaves=%d, key-mappings=%d",
+                    module_name, len(items), len(types), len(km)
+                )
+
+            _logger.info(
+                "Collected SID data: %d module(s), %d sids, %d typed leaves, %d key mappings",
+                len(self.sid_files), len(sids), len(types), len(key_mapping)
             )
+        else:
+            _logger.warning("No SID files provided. Relying on DNS queries for SID resolution.")
 
-        _logger.info(
-            "Collected SID data: %d module(s), %d sids, %d typed leaves, %d key mappings",
-            len(self.sid_files), len(sids), len(types), len(key_mapping)
-        )
-            
         return sids, types, key_mapping
+
+    def _sid_in_range(self, sid: int, sid_json: dict) -> bool:
+        """Return True if sid falls within the assignment-range of a .sid JSON dict."""
+        if len(sid_json) == 1 and list(sid_json.keys())[0].endswith("sid-file"):
+            sid_data = list(sid_json.values())[0]
+        else:
+            sid_data = sid_json
+        if "assignment-range" not in sid_data:
+            _logger.error("SID file has no 'assignment-range' — cannot validate SID %d", sid)
+            return False
+        for r in sid_data.get("assignment-range", []):
+            entry_point = int(r["entry-point"])
+            size        = int(r["size"])
+            if entry_point <= sid < entry_point + size:
+                return True
+        _logger.error("SID %d not in any assignment-range of file %s", sid, sid_json.get("module-name", "unknown"))
+        return False
+
+    def _merge_sid_data(self, sid_json: dict):
+        """Merge a freshly downloaded .sid JSON dict into the live model tables."""
+        if len(sid_json) == 1 and list(sid_json.keys())[0].endswith("sid-file"):
+            sid_data = list(sid_json.values())[0]
+        else:
+            sid_data = sid_json
+
+        module_name = sid_data.get("module-name", "unknown")
+        items       = sid_data.get("item") or sid_data.get("items", [])
+        km          = sid_data.get("key-mapping", {})
+
+        for item in items:
+            if item["namespace"] == "identity":
+                self.sids[f'{module_name}:{item["identifier"]}'] = int(item["sid"])
+            else:
+                self.sids[item["identifier"]] = int(item["sid"])
+            if "type" in item:
+                self.types[item["identifier"]] = item["type"]
+
+        self.key_mapping.update(km)
+        self.ids = {v: k for k, v in self.sids.items()}
+        _logger.info("Merged SID module '%s': %d items", module_name, len(items))

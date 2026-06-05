@@ -2,6 +2,7 @@
 
 from .sid import ModelSID
 from .datastore import CORECONFDatastore
+from .sid_dns import query_sid as dns_query_sid, fetch_sid_file
 import json
 import base64
 import cbor2 as cbor
@@ -58,7 +59,7 @@ class CORECONFModel(ModelSID):
     """
 
     def __init__(self, 
-                 sid_files: list[str] | str, 
+                 sid_files: list[str] | str = None,  # Use DNS to locate sid files if not provided
                  model_description_file: str = None):
         
         self.model_description_file = model_description_file
@@ -526,6 +527,29 @@ class CORECONFModel(ModelSID):
     ## Tree Transformation (Decoding)
     # --------------------------------------------------------------------------
 
+    def _get_url(self, sid: int):
+        result = dns_query_sid(sid)
+        status = result["status"]
+        fields = result["fields"]
+        fqdn   = result["fqdn"]
+        if status == "registered":
+            repo = fields.get("repository")
+            _logger.info("SID %d → %s | module=%s entry_point=%s repository=%s",
+                         sid, fqdn, fields.get("name", "?"), fields.get("entry_point", "?"), repo)
+            if repo:
+                sid_json = fetch_sid_file(repo)
+
+                if sid_json and self._sid_in_range(sid, sid_json):
+                    self._merge_sid_data(sid_json)
+                elif sid_json:
+                    _logger.warning("SID %d not in assignment-range of fetched file %s", sid, repo)
+        elif status == "entry-point-only":
+            _logger.info("SID %d → %s | entry-point known, module not detailed", sid, fqdn)
+        elif status == "not-registered":
+            _logger.warning("SID %d → %s | not registered in sid.yt", sid, fqdn)
+        else:
+            _logger.warning("SID %d | unknown zone, not in any registered range", sid)
+
     def _sid_to_identifier_tree(self, obj, sid_delta=0, path='/', use_native_types=True):
         """
         Convert a SID-keyed tree into an identifier-keyed tree (iterative).
@@ -557,6 +581,11 @@ class CORECONFModel(ModelSID):
                     
                     sid = key + current_delta
                     # look for the original identifiers
+
+                    if sid not in self.ids:
+                        _logger.warning("SID %d not found in model; skipping this node and its subtree.", sid)
+                        self._get_url(sid)
+
                     identifier = self.ids[sid]
                     node_identifier = identifier[len(current_path):].lstrip("/")
                     current_value[node_identifier] = _ValueWrapper(current_value.pop(key))
