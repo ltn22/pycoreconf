@@ -398,6 +398,10 @@ class CORECONFModel(ModelSID):
         elif type(dtype) is dict: # enumeration ({"value":"name"})
             if to_cbor: # inverse dict, w value as int
                 dtype = {v: int(k) for k, v in dtype.items()}
+            if str(leaf) not in dtype:
+                _logger.warning("Enum value %r not found in type mapping %s, returning as-is", leaf, dtype)
+                print(f"[DEBUG enum] leaf={leaf!r} str={str(leaf)!r} dtype={dtype}")
+                return leaf
             return dtype[str(leaf)]
 
         elif type(dtype) is list: # union
@@ -534,6 +538,7 @@ class CORECONFModel(ModelSID):
         fqdn   = result["fqdn"]
         if status == "registered":
             repo = fields.get("repository")
+            print(f"[DEBUG DNS] SID={sid} module={fields.get('name','?')} entry_point={fields.get('entry_point','?')} repository={repo}")
             _logger.info("SID %d → %s | module=%s entry_point=%s repository=%s",
                          sid, fqdn, fields.get("name", "?"), fields.get("entry_point", "?"), repo)
             if repo:
@@ -580,11 +585,14 @@ class CORECONFModel(ModelSID):
                     # get full identifier path
                     
                     sid = key + current_delta
-                    # look for the original identifiers
 
                     if sid not in self.ids:
-                        _logger.warning("SID %d not found in model; skipping this node and its subtree.", sid)
+                        _logger.warning("SID %d not found in model, querying DNS", sid)
                         self._get_url(sid)
+
+                    if sid not in self.ids:
+                        _logger.warning("SID %d still unknown after DNS resolution, skipping subtree", sid)
+                        continue
 
                     identifier = self.ids[sid]
                     node_identifier = identifier[len(current_path):].lstrip("/")
@@ -599,8 +607,11 @@ class CORECONFModel(ModelSID):
 
             # current_value is a leaf here, transform their datatype before adding to the current_object
             else:
-                dtype = self.types[current_path]
-                current_object.value = self._convert_leaf_value(current_object.value, dtype, to_cbor=False, use_native_types=use_native_types)
+                if current_path not in self.types:
+                    _logger.debug("No type info for path '%s', leaving value as-is", current_path)
+                else:
+                    dtype = self.types[current_path]
+                    current_object.value = self._convert_leaf_value(current_object.value, dtype, to_cbor=False, use_native_types=use_native_types)
 
         # Unwrap the ValueClass objects before returning
         return(_unwrap_values(obj))
