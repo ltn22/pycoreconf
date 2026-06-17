@@ -544,6 +544,10 @@ class CORECONFModel(ModelSID):
             if repo:
                 sid_json = fetch_sid_file(repo)
 
+                if sid_json:
+                    sid_data = list(sid_json.values())[0] if len(sid_json) == 1 and list(sid_json.keys())[0].endswith("sid-file") else sid_json
+                    if "key-mapping" not in sid_data:
+                        _logger.warning("SID file from %s has no 'key-mapping' — regenerate it with ltn22/pyang --sid-extension", repo)
                 if sid_json and self._sid_in_range(sid, sid_json):
                     self._merge_sid_data(sid_json)
                 elif sid_json:
