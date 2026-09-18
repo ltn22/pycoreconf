@@ -19,6 +19,9 @@ _logger = logging.getLogger(__name__)
 KNOWN_ZONES = [
     (0,               999_999,           "ietf.sid.yt",                   False),
     (5_000_000,       5_999_999,         "afnic.sid.yt",                  False),
+    # Product modules such as atmos (entry point 10000000) are registered in
+    # afnic.sid.yt too, under the same reversed-label naming.
+    (10_000_000,      10_999_999,        "afnic.sid.yt",                  False),
     (3_000_000_000,   3_999_999_999,     "3.0.0.0.0.0.0.0.0.0.0.sid.yt", True),
     (300_000_000_000, 399_999_999_999,   "3.0.0.0.0.0.0.0.0.sid.yt",     True),
 ]

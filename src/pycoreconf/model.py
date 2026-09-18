@@ -340,7 +340,7 @@ class CORECONFModel(ModelSID):
             if leaf.tag == ENUMERATION_CBOR_TAG_VALUE:
                 return dtype[str(leaf.value)]
             if leaf.tag == IDENTITYREF_CBOR_TAG_VALUE:
-                return self.ids[leaf.value]
+                return self._identity_name(leaf.value)
             if leaf.tag == INSTANCE_IDENTIFIER_CBOR_TAG_VALUE:
                 _logger.debug("Decoding CBOR tag %d value (%d) without handling", leaf.tag, leaf.value)
                 return leaf.value # ?
@@ -383,7 +383,7 @@ class CORECONFModel(ModelSID):
             elif dtype == "inet:uri":
                 return str(leaf)
             elif dtype == "identityref": # sid <-> 'module:identity'
-                return self.sids[leaf] if to_cbor else self.ids[leaf]
+                return self.sids[leaf] if to_cbor else self._identity_name(leaf)
             elif dtype == "bits":
                 _logger.debug("Handling bits type as hex string")
                 # For bits type, convert bytes to hex string when decoding
@@ -408,7 +408,14 @@ class CORECONFModel(ModelSID):
             _logger.debug("Resolving union type (to_cbor=%s, value=%r, candidates=%s)", to_cbor, leaf, dtype)
             for sub_dtype in dtype:
                 try:
-                    val = self._convert_leaf_value(leaf, sub_dtype, to_cbor, use_native_types)
+                    if not to_cbor and sub_dtype == "identityref":
+                        # An identityref inside a union is tagged (RFC 9254
+                        # §6.12), and tagged values never reach this loop. Keep
+                        # the strict lookup: _identity_name would send any
+                        # untagged number to the DNS as if it were an identity.
+                        val = self.ids[leaf]
+                    else:
+                        val = self._convert_leaf_value(leaf, sub_dtype, to_cbor, use_native_types)
                     _logger.debug("Matched union subtype %s", sub_dtype)
 
                     # Special cases - RFC 9254 Section 6.12
@@ -558,6 +565,29 @@ class CORECONFModel(ModelSID):
             _logger.warning("SID %d → %s | not registered in sid.yt", sid, fqdn)
         else:
             _logger.warning("SID %d | unknown zone, not in any registered range", sid)
+
+    def _identity_name(self, sid: int):
+        """
+        Name ('module:identity') of an identity SID met as a leaf *value*.
+
+        _sid_to_identifier_tree resolves unknown SIDs lazily, but only those it
+        meets as tree keys. Identities never appear as keys — only as identityref
+        values, typically a list key such as transducer/type — so a module that
+        defines nothing but identities (a product module like atmos) would never
+        be fetched, and the lookup below would raise KeyError. Resolve it here
+        the same way.
+
+        Returns the SID itself when it is still unknown after the DNS lookup, so
+        that one unregistered identity leaves a raw number in the output instead
+        of aborting the whole decoding.
+        """
+        if sid not in self.ids:
+            _logger.warning("Identity SID %d not found in model, querying DNS", sid)
+            self._get_url(sid)
+        if sid not in self.ids:
+            _logger.warning("Identity SID %d still unknown after DNS resolution, keeping the SID", sid)
+            return sid
+        return self.ids[sid]
 
     def _sid_to_identifier_tree(self, obj, sid_delta=0, path='/', use_native_types=True):
         """
